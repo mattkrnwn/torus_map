@@ -708,13 +708,38 @@ class AsciiRing {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         
-        // Calculate grid size based on screen size
-        this.gridSize = Math.floor(Math.min(this.canvas.width, this.canvas.height) / 60);
+        // Check if we're on mobile
+        const isMobile = this.canvas.width < 768;
+        
+        // Calculate grid size based on screen size with mobile adjustment
+        if (isMobile) {
+            // On mobile, use a larger divisor to make the grid bigger
+            this.gridSize = Math.floor(Math.min(this.canvas.width, this.canvas.height) / 40);
+        } else {
+            // Desktop remains the same
+            this.gridSize = Math.floor(Math.min(this.canvas.width, this.canvas.height) / 60);
+        }
+        
         this.cols = Math.floor(this.canvas.width / this.gridSize);
         this.rows = Math.floor(this.canvas.height / this.gridSize);
         
         // Calculate aspect ratio
         this.aspectRatio = this.cols / this.rows;
+        
+        // Adjust torus size based on screen size
+        if (isMobile) {
+            // On mobile, make the torus proportionally larger
+            this.torusRadius = 0.7;    // Increased from 0.6
+            this.tubeRadius = 0.35;    // Increased from 0.3
+            this.fov = 2.2;            // Increased from 2
+            this.cameraDistance = 3.8; // Decreased from 4
+        } else {
+            // Desktop - slightly smaller
+            this.torusRadius = 0.55;   // Decreased from 0.6
+            this.tubeRadius = 0.28;    // Decreased from 0.3
+            this.fov = 1.9;            // Decreased from 2
+            this.cameraDistance = 4.2; // Increased from 4
+        }
     }
     
     project3DTo2D(x, y, z) {
@@ -743,6 +768,26 @@ class AsciiRing {
         };
     }
     
+    wrapText(text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = words[0];
+
+        for (let i = 1; i < words.length; i++) {
+            const word = words[i];
+            const width = this.ctx.measureText(currentLine + " " + word).width;
+            
+            if (width < maxWidth) {
+                currentLine += " " + word;
+            } else {
+                lines.push(currentLine);
+                currentLine = word;
+            }
+        }
+        lines.push(currentLine);
+        return lines;
+    }
+    
     drawOverlay() {
         this.ctx.font = this.overlayFont;
         this.ctx.fillStyle = this.overlayColor;
@@ -767,54 +812,121 @@ class AsciiRing {
         const padding = 20;
         const lineHeight = 20;
         
-        // Left side text (date, time, location, weather)
-        this.ctx.textAlign = 'left';
-        this.ctx.font = this.overlayFont;
-        this.ctx.fillStyle = 'rgba(220, 220, 220, 0.9)';
+        // Check if we're on mobile (width less than 768px)
+        const isMobile = this.canvas.width < 768;
         
-        // Draw location
-        this.ctx.fillText(this.location, padding, padding + lineHeight);
-        
-        // Draw weather information
-        if (this.weatherData) {
-            console.log('Drawing weather data:', this.weatherData);
+        if (isMobile) {
+            // Mobile layout - stack everything vertically on the left
+            this.ctx.textAlign = 'left';
+            this.ctx.font = this.overlayFont;
+            this.ctx.fillStyle = 'rgba(220, 220, 220, 0.9)';
             
-            // Weather condition and temperature
-            const weatherText = `${this.weatherData.weather} • ${this.weatherData.temperature}°F`;
-            this.ctx.fillText(weatherText, padding, padding + lineHeight * 2);
+            // Draw location
+            this.ctx.fillText(this.location, padding, padding + lineHeight);
             
-            // Date and time
-            this.ctx.fillText(`${dateString} ${timeString}`, padding, padding + lineHeight * 3);
+            // Draw weather information
+            if (this.weatherData) {
+                // Weather condition and temperature
+                const weatherText = `${this.weatherData.weather} • ${this.weatherData.temperature}°F`;
+                this.ctx.fillText(weatherText, padding, padding + lineHeight * 2);
+                
+                // Date and time
+                this.ctx.fillText(`${dateString} ${timeString}`, padding, padding + lineHeight * 3);
+            } else {
+                // Draw date and time if weather data is unavailable
+                this.ctx.fillText(`${dateString} ${timeString}`, padding, padding + lineHeight * 2);
+            }
+            
+            // Draw artist and artwork info below
+            this.ctx.font = 'bold 14px monospace';
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            
+            // Update transition if active
+            this.updateTransition();
+            
+            // Get the current display text (either transitioning or static)
+            const displayText = this.isTransitioning 
+                ? this.getScrambledText(this.currentDisplayText, this.transitionProgress)
+                : this.currentDisplayText;
+            
+            // Position the text below the weather info
+            const artistY = this.weatherData ? padding + lineHeight * 4 : padding + lineHeight * 3;
+            this.ctx.fillText(displayText, padding, artistY);
+            
+            // Add poetic description
+            const currentPainter = this.getCurrentPainter();
+            const timeKey = this.getCurrentTimeKey();
+            const description = this.weatherDescriptions[currentPainter.name][timeKey];
+            
+            // Draw description with slightly smaller font and reduced opacity
+            this.ctx.font = '12px monospace';
+            this.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
+            
+            // Wrap description text for mobile
+            const maxWidth = this.canvas.width - (padding * 2);
+            const wrappedLines = this.wrapText(description, maxWidth);
+            
+            // Draw each line of the wrapped description
+            wrappedLines.forEach((line, index) => {
+                this.ctx.fillText(line, padding, artistY + lineHeight + (index * lineHeight));
+            });
         } else {
-            // Draw date and time if weather data is unavailable
-            this.ctx.fillText(`${dateString} ${timeString}`, padding, padding + lineHeight * 2);
+            // Desktop layout - left and right side text
+            // Left side text (date, time, location, weather)
+            this.ctx.textAlign = 'left';
+            this.ctx.font = this.overlayFont;
+            this.ctx.fillStyle = 'rgba(220, 220, 220, 0.9)';
+            
+            // Draw location
+            this.ctx.fillText(this.location, padding, padding + lineHeight);
+            
+            // Draw weather information
+            if (this.weatherData) {
+                // Weather condition and temperature
+                const weatherText = `${this.weatherData.weather} • ${this.weatherData.temperature}°F`;
+                this.ctx.fillText(weatherText, padding, padding + lineHeight * 2);
+                
+                // Date and time
+                this.ctx.fillText(`${dateString} ${timeString}`, padding, padding + lineHeight * 3);
+            } else {
+                // Draw date and time if weather data is unavailable
+                this.ctx.fillText(`${dateString} ${timeString}`, padding, padding + lineHeight * 2);
+            }
+            
+            // Right side text (artist and artwork)
+            this.ctx.textAlign = 'right';
+            this.ctx.font = 'bold 14px monospace';
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            
+            // Update transition if active
+            this.updateTransition();
+            
+            // Get the current display text (either transitioning or static)
+            const displayText = this.isTransitioning 
+                ? this.getScrambledText(this.currentDisplayText, this.transitionProgress)
+                : this.currentDisplayText;
+            
+            // Position the text on the right side with fixed padding
+            this.ctx.fillText(displayText, this.canvas.width - padding, padding + lineHeight);
+            
+            // Add poetic description
+            const currentPainter = this.getCurrentPainter();
+            const timeKey = this.getCurrentTimeKey();
+            const description = this.weatherDescriptions[currentPainter.name][timeKey];
+            
+            // Draw description with slightly smaller font and reduced opacity
+            this.ctx.font = '12px monospace';
+            this.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
+            
+            // Wrap description text for desktop
+            const maxWidth = this.canvas.width / 2 - padding;
+            const wrappedLines = this.wrapText(description, maxWidth);
+            
+            // Draw each line of the wrapped description
+            wrappedLines.forEach((line, index) => {
+                this.ctx.fillText(line, this.canvas.width - padding, padding + lineHeight * 2 + (index * lineHeight));
+            });
         }
-        
-        // Right side text (artist and artwork)
-        this.ctx.textAlign = 'right';
-        this.ctx.font = 'bold 14px monospace';
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-        
-        // Update transition if active
-        this.updateTransition();
-        
-        // Get the current display text (either transitioning or static)
-        const displayText = this.isTransitioning 
-            ? this.getScrambledText(this.currentDisplayText, this.transitionProgress)
-            : this.currentDisplayText;
-        
-        // Position the text on the right side with fixed padding
-        this.ctx.fillText(displayText, this.canvas.width - padding, padding + lineHeight);
-        
-        // Add poetic description
-        const currentPainter = this.getCurrentPainter();
-        const timeKey = this.getCurrentTimeKey();
-        const description = this.weatherDescriptions[currentPainter.name][timeKey];
-        
-        // Draw description with slightly smaller font and reduced opacity
-        this.ctx.font = '12px monospace';
-        this.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
-        this.ctx.fillText(description, this.canvas.width - padding, padding + lineHeight * 2);
         
         // Reset font, color, and alignment
         this.ctx.font = this.overlayFont;
